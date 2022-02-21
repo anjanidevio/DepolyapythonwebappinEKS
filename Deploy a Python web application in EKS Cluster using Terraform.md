@@ -780,6 +780,108 @@ spec:
 kubectl apply -f deployment.yaml
 ```
 
+### Test the application
+
+1. Once the application is deployed, EKS exposes the application front end to the internet. This may take few minutes to complete. Use the following command to monitor the progress.
+
+ `kubectl get svc`
+
+## Deploy a sample app on Kubernetes
+
+* Below is an example of a manifest file that creates two deployments, one for the python applications and one for Redis.
+
+```text
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote-back
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vote-back
+  template:
+    metadata:
+      labels:
+        app: vote-back
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": linux
+      containers:
+      - name: vote-back
+        image: redis
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        ports:
+        - containerPort: 6379
+          name: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vote-back
+spec:
+  ports:
+  - port: 6379
+  selector:
+    app: vote-back
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote-front
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vote-front
+  template:
+    metadata:
+      labels:
+        app: vote-front
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": linux
+      containers:
+      - name: aws-vote-front
+        image: 076482949052.dkr.ecr.ap-south-1.amazonaws.com
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        ports:
+        - containerPort: 80
+        env:
+        - name: REDIS
+          value: "aws-vote-back"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aws-vote-front
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: aws-vote-front
+```
+
+1. Use nano or vi to create a file name `votingapp.yaml` and copy the above provided content and save the file
+
+2. Deploy the application using kubectl apply command and provide the name of the YAML file as input parameter. 
+
+```text
+kubectl apply -f votingapp.yaml
+```
 
 ### Test the application
 
@@ -787,3 +889,16 @@ kubectl apply -f deployment.yaml
 
  `kubectl get svc`
  
+```
+NAME               TYPE           CLUSTER-IP      EXTERNAL-IP                                                               PORT(S)        AGE
+aws-vote-back    ClusterIP      10.100.32.122   <none>                                                                    6379/TCP       13s
+aws-vote-front   LoadBalancer   10.100.117.67   af2763c5bc4aa11e98e6f06c85d59362-1062481970.us-east-2.elb.amazonaws.com   80:30280/TCP   12s
+kubernetes         ClusterIP      10.100.0.1      <none>                                                                    443/TCP        10d
+```
+* The `EXTERNAL-IP` for the aws-vote-front is in a pending state. Once it is ready it will change to the public IP address. Now that the public IP is available, copy the public IP and paste it in the chrome broswer on the qloudable console. This should open up the voting application. Vote your favorite pet and see the results change!
+
+`kubectl get service aws-vote-front --watch`
+
+```
+NAME               TYPE           CLUSTER-IP      EXTERNAL-IP        PORT(S)        AGE
+aws-vote-front   LoadBalancer   10.100.117.67   af2763c5bc4aa...   80:30280/TCP   3m5s
