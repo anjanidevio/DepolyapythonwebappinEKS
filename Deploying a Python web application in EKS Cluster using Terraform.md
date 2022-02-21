@@ -757,7 +757,7 @@ spec:
   selector:
     matchLabels:
       app: hello-python
-  replicas: 4
+  replicas: 2
   template:
     metadata:
       labels:
