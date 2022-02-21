@@ -10,6 +10,8 @@
 
 [Accessing the EKS cluster](#accessing-the-eks-cluster)
 
+[Build and Run a simple python flask docker webapp](#build-and-run-a-simple-python-flask-docker-webapp)
+
 [Deploy a sample app on Kubernetes](#deploy-a-sample-app-on-kubernetes)
 
 
@@ -672,103 +674,110 @@ ip-10-0-0-77.us-east-2.compute.internal   Ready    <none>   4h3m   v1.13.8-eks-c
 ip-10-0-1-91.us-east-2.compute.internal   Ready    <none>   4h3m   v1.13.8-eks-cd3eb0
 
 ```
+## Build and Run a simple python flask docker webapp
+
+* Clone the repository to local machine.
+
+`https://github.com/anjanidevio/DepolyapythonwebappinEKS.git`
+
+* change to app directory.
+
+`cd /app`
+
+*  Two files in this directory. one is main.py file another one is reqirements.txt.
+
+```txt
+from flask import Flask
+import subprocess as sp
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    output = sp.getoutput('echo $ATC_USERNAME' \n 'echo $ATC_PASSWORD')
+    print(output)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0')
+```
+
+Create a Dockerfile: In the hello-python/app directory, create a file named Dockerfile with the following contents and save it.
+
+``` txt
+FROM python:3.7
+
+RUN mkdir /app
+WORKDIR /app
+ADD . /app/
+RUN pip install -r requirements.txt
+
+EXPOSE 5000
+CMD ["python", "/app/main.py"]
+
+```
+
+* Change to the current directory build the image with the following command
+
+`docker build -f Dockerfile -t hello-python:latest`
+
+* list the created images using below command. 
+
+ `docker image ls`
+
+ Verify the docker image is working or not. You can browse the app in your browser.
+ http://localhost:5001
+
+`docker run -p 5001:5000 hello-python`
+
+
 
 ## Deploy a sample app on Kubernetes
 
-* Below is an example of a manifest file that creates two deployments, one for the python applications and one for Redis.
+* Below is an example of a manifest file that creates deployment file for the flask python applications.
 
 ```text
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: vote-back
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: vote-back
-  template:
-    metadata:
-      labels:
-        app: vote-back
-    spec:
-      nodeSelector:
-        "beta.kubernetes.io/os": linux
-      containers:
-      - name: vote-back
-        image: redis
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 250m
-            memory: 256Mi
-        ports:
-        - containerPort: 6379
-          name: redis
----
 apiVersion: v1
 kind: Service
 metadata:
-  name: vote-back
+  name: hello-python-service
 spec:
+  selector:
+    app: hello-python
   ports:
-  - port: 6379
-  selector:
-    app: vote-back
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: vote-front
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: vote-front
-  template:
-    metadata:
-      labels:
-        app: vote-front
-    spec:
-      nodeSelector:
-        "beta.kubernetes.io/os": linux
-      containers:
-      - name: azure-vote-front
-        image: microsoft/azure-vote-front:v1
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 250m
-            memory: 256Mi
-        ports:
-        - containerPort: 80
-        env:
-        - name: REDIS
-          value: "azure-vote-back"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: azure-vote-front
-spec:
+  - protocol: "TCP"
+    port: 6000
+    targetPort: 5000
   type: LoadBalancer
-  ports:
-  - port: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-python
+spec:
   selector:
-    app: azure-vote-front
+    matchLabels:
+      app: hello-python
+  replicas: 4
+  template:
+    metadata:
+      labels:
+        app: hello-python
+    spec:
+      containers:
+      - name: hello-python
+        image: hello-python:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5000
 ```
 
-1. Use nano or vi to create a file name `votingapp.yaml` and copy the above provided content and save the file
+1. Use nano or vi to create a file name `deployment.yaml` and copy the above provided content and save the file
 
 
 2. Deploy the application using kubectl apply command and provide the name of the YAML file as input parameter. 
 
 ```text
-kubectl apply -f votingapp.yaml
+kubectl apply -f deployment.yaml
 ```
 
 
@@ -778,18 +787,3 @@ kubectl apply -f votingapp.yaml
 
  `kubectl get svc`
  
-```
-NAME               TYPE           CLUSTER-IP      EXTERNAL-IP                                                               PORT(S)        AGE
-azure-vote-back    ClusterIP      10.100.32.122   <none>                                                                    6379/TCP       13s
-azure-vote-front   LoadBalancer   10.100.117.67   af2763c5bc4aa11e98e6f06c85d59362-1062481970.us-east-2.elb.amazonaws.com   80:30280/TCP   12s
-kubernetes         ClusterIP      10.100.0.1      <none>                                                                    443/TCP        10d
-```
-* The `EXTERNAL-IP` for the azure-vote-front is in a pending state. Once it is ready it will change to the public IP address. Now that the public IP is available, copy the public IP and paste it in the chrome broswer on the qloudable console. This should open up the voting application. Vote your favorite pet and see the results change!
-
-`kubectl get service azure-vote-front --watch`
-
-```
-NAME               TYPE           CLUSTER-IP      EXTERNAL-IP        PORT(S)        AGE
-azure-vote-front   LoadBalancer   10.100.117.67   af2763c5bc4aa...   80:30280/TCP   3m5s
-```
-
